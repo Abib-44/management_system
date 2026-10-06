@@ -128,7 +128,7 @@ class RolePermissionSeeder extends Seeder
 
         'teacher' => [
             'View:Dashboard',
-            'View:TeachingDashboard',,
+            'View:TeachingDashboard',
             'View:TeachingAgenda',
         ],
 
