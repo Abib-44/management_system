@@ -1,29 +1,44 @@
-.PHONY: clear db pint test docker-local docker-prod docker-prod-down docker-prod-logs
+SAIL := ./vendor/bin/sail
 
-clear:
-	clear
+PROD := docker compose -p gestionale --env-file .env.production -f compose.prod.yaml
+
+.PHONY: dev dev-stop dev-logs db pint test prod prod-stop prod-down prod-logs prod-status
+
+dev:
+	$(SAIL) up -d --wait
+
+dev-stop:
+	$(SAIL) down
+
+dev-logs:
+	$(SAIL) logs -f
 
 db:
 	clear
-	./vendor/bin/sail pint
-	./vendor/bin/sail artisan migrate:fresh --seed
+	$(SAIL) pint
+	$(SAIL) artisan migrate:fresh
+	$(SAIL) artisan app:ensure-storage-bucket
+	$(SAIL) artisan db:seed
 
 pint:
-	./vendor/bin/sail pint
+	$(SAIL) pint
 
 test:
 	clear
-	./vendor/bin/sail pint
-	./vendor/bin/sail artisan test
+	$(SAIL) pint
+	$(SAIL) artisan test
 
-docker-local:
-	docker compose -f compose.yaml up
+prod:
+	$(PROD) up -d --build
 
-docker-prod:
-	docker compose --env-file .env.production -f compose.prod.yaml up -d
+prod-stop:
+	$(PROD) stop
 
-docker-prod-down:
-	docker compose --env-file .env.production -f compose.prod.yaml down
+prod-down:
+	$(PROD) down
 
-docker-prod-logs:
-	docker compose --env-file .env.production -f compose.prod.yaml logs -f
+prod-logs:
+	$(PROD) logs -f --tail=100
+
+prod-status:
+	$(PROD) ps

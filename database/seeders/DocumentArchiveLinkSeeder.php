@@ -13,31 +13,14 @@ use App\Models\Student;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
 
 class DocumentArchiveLinkSeeder extends Seeder
 {
-    /**
-     * File fixture presenti nel progetto.
-     *
-     * Verranno caricati su MinIO nella cartella "documents"
-     * solo se non esistono già.
-     */
     private const FILES = [
-        'carte_d_identita.webp',
-        'codice-fiscale.webp',
-        'passport.webp',
+        'documents/carte_d_identita.webp',
+        'documents/codice-fiscale.webp',
+        'documents/passport.webp',
     ];
-
-    /**
-     * Cartella locale delle fixture.
-     */
-    private const LOCAL_PATH = 'images/minio';
-
-    /**
-     * Cartella remota su MinIO.
-     */
-    private const MINIO_PATH = 'documents';
 
     public function run(): void
     {
@@ -47,23 +30,15 @@ class DocumentArchiveLinkSeeder extends Seeder
             return;
         }
 
-        /*
-         * Prima garantiamo che i file esistano su MinIO.
-         *
-         * Se esistono:
-         *     non viene fatto nulla.
-         *
-         * Se non esistono:
-         *     vengono caricati dalle fixture locali.
-         */
-        $files = $this->prepareFilesOnMinio();
-
         $archives = DocumentArchive::query()->get();
 
         /*
          * ACTIVITY
          */
-        if ($archives->isNotEmpty() && ($activity = Activity::query()->first())) {
+        if (
+            $archives->isNotEmpty()
+            && ($activity = Activity::query()->first())
+        ) {
             DocumentArchiveLink::create([
                 'document_archive_id' => $archives->get(0)->id,
                 'entity_type' => 'activity',
@@ -78,7 +53,10 @@ class DocumentArchiveLinkSeeder extends Seeder
         /*
          * TRANSACTION
          */
-        if ($archives->count() > 1 && ($transaction = FinancialTransaction::query()->first())) {
+        if (
+            $archives->count() > 1
+            && ($transaction = FinancialTransaction::query()->first())
+        ) {
             DocumentArchiveLink::create([
                 'document_archive_id' => $archives->get(1)->id,
                 'entity_type' => 'transaction',
@@ -106,7 +84,6 @@ class DocumentArchiveLinkSeeder extends Seeder
          * MEMBER
          */
         Member::query()->chunkById(200, function ($members) use (
-            $files,
             $category,
             $userId
         ) {
@@ -115,7 +92,6 @@ class DocumentArchiveLinkSeeder extends Seeder
                     $member,
                     'member',
                     'member_id',
-                    $files,
                     $category->id,
                     $userId
                 );
@@ -126,7 +102,6 @@ class DocumentArchiveLinkSeeder extends Seeder
          * STUDENT
          */
         Student::query()->chunkById(200, function ($students) use (
-            $files,
             $category,
             $userId
         ) {
@@ -135,7 +110,6 @@ class DocumentArchiveLinkSeeder extends Seeder
                     $student,
                     'student',
                     'student_id',
-                    $files,
                     $category->id,
                     $userId
                 );
@@ -143,83 +117,10 @@ class DocumentArchiveLinkSeeder extends Seeder
         });
     }
 
-    /**
-     * Garantisce che tutti i file fixture esistano su MinIO.
-     *
-     * Se il file esiste già su MinIO:
-     *     viene semplicemente utilizzato.
-     *
-     * Se il file non esiste:
-     *     viene caricato dalla cartella locale
-     *     public/images/minio.
-     */
-    private function prepareFilesOnMinio(): array
-    {
-        $disk = Storage::disk('s3');
-
-        return collect(self::FILES)
-            ->map(function (string $filename) use ($disk) {
-                $localPath = public_path(self::LOCAL_PATH.'/'.$filename);
-                $minioPath = self::MINIO_PATH.'/'.$filename;
-
-                /*
-                 * Controllo fixture locale.
-                 */
-                if (! is_file($localPath)) {
-                    throw new RuntimeException(
-                        "Fixture locale non trovata: {$localPath}"
-                    );
-                }
-
-                /*
-                 * Controllo MinIO.
-                 */
-                if (! $disk->exists($minioPath)) {
-                    $this->command?->info(
-                        "Upload MinIO: {$minioPath}"
-                    );
-
-                    $disk->put(
-                        $minioPath,
-                        file_get_contents($localPath),
-                        [
-                            'ContentType' => 'image/webp',
-                        ]
-                    );
-                } else {
-                    $this->command?->line(
-                        "File già presente su MinIO: {$minioPath}"
-                    );
-                }
-
-                /*
-                 * Verifica finale.
-                 *
-                 * Se per qualche motivo l'upload è fallito,
-                 * il seeder si interrompe con un errore chiaro.
-                 */
-                if (! $disk->exists($minioPath)) {
-                    throw new RuntimeException(
-                        "File {$minioPath} non presente su MinIO dopo l'upload."
-                    );
-                }
-
-                return [
-                    'path' => $minioPath,
-                    'size' => $disk->size($minioPath),
-                ];
-            })
-            ->all();
-    }
-
-    /**
-     * Crea l'archivio personale e i relativi attachment.
-     */
     private function createPersonalArchive(
         $person,
         string $entityType,
         string $column,
-        array $files,
         int $categoryId,
         int $userId
     ): void {
@@ -237,21 +138,28 @@ class DocumentArchiveLinkSeeder extends Seeder
         DocumentArchiveLink::create([
             'document_archive_id' => $archive->id,
             'entity_type' => $entityType,
-            'member_id' => $entityType === 'member' ? $person->id : null,
+            'member_id' => $entityType === 'member'
+                ? $person->id
+                : null,
             'activity_id' => null,
             'transaction_id' => null,
-            'student_id' => $entityType === 'student' ? $person->id : null,
+            'student_id' => $entityType === 'student'
+                ? $person->id
+                : null,
             'created_by' => $userId,
         ]);
 
         /*
          * Attachment.
+         *
+         * I file sono già stati preparati dal comando
+         * app:ensure-storage-bucket.
          */
-        foreach ($files as $i => $file) {
+        foreach (self::FILES as $i => $path) {
             Attachment::factory()
                 ->existingFile(
-                    $file['path'],
-                    $file['size'],
+                    $path,
+                    $this->getFileSize($path),
                     'image/webp',
                     'Documento '.($i + 1)
                 )
@@ -262,5 +170,11 @@ class DocumentArchiveLinkSeeder extends Seeder
                     'uploaded_by' => $userId,
                 ]);
         }
+    }
+
+    private function getFileSize(string $path): int
+    {
+        return Storage::disk('s3')
+            ->size($path);
     }
 }

@@ -10,9 +10,11 @@ use App\Models\DocumentCategory;
 use App\Models\FinancialCategory;
 use App\Models\FinancialTransaction;
 use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -20,6 +22,18 @@ use Tests\TestCase;
 class FinancialTransactionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Sostituisci 'admin' con l'ID reale del pannello (vedi AdminPanelProvider::panel()->id(...))
+        Filament::setCurrentPanel('admin');
+
+        // Le policy di Filament Shield non bloccano questi test:
+        // qui verifichiamo il comportamento della form, non i permessi.
+        Gate::before(fn () => true);
+    }
 
     private function user(): User
     {

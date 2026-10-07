@@ -64,30 +64,16 @@ class FinancialTransactionForm
                                     ->columns(2)
                                     ->schema([
 
-                                        Select::make('type')
-                                            ->label('Tipo movimento')
-                                            ->searchable()
-                                            ->getSearchResultsUsing(function (string $search): array {
-                                                return FinancialTransaction::query()
-                                                    ->select('type')
-                                                    ->whereNotNull('type')
-                                                    ->where('type', 'like', "%{$search}%")
-                                                    ->distinct()
-                                                    ->orderBy('type')
-                                                    ->pluck('type', 'type')
-                                                    ->toArray();
-                                            })
-                                            ->getOptionLabelUsing(fn ($value): ?string => $value
-                                                ? match ($value) {
-                                                    'income' => 'Entrata',
-                                                    'expense' => 'Uscita',
-                                                    default => $value,
-                                                }
-                                                : null)
-                                            ->required()
-                                            ->native(false)
-                                            ->live()
-                                            ->placeholder('Cerca il tipo'),
+                                       Select::make('type')
+    ->label('Tipo movimento')
+    ->options([
+        'income' => 'Entrata',
+        'expense' => 'Uscita',
+    ])
+    ->required()
+    ->native(false)
+    ->live()
+    ->placeholder('Seleziona il tipo'),
 
                                         TextInput::make('amount')
                                             ->label('Importo')

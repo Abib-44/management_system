@@ -2,13 +2,13 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Pages\TeachingAgenda;
 use App\Filament\Pages\Backup;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\DocumentsDashboard;
 use App\Filament\Pages\FinanceDashboard;
 use App\Filament\Pages\MembersDashboard;
 use App\Filament\Pages\ServicesDashboard;
+use App\Filament\Pages\TeachingAgenda;
 use App\Filament\Pages\TeachingDashboard;
 use App\Filament\Resources\Activities\ActivityResource;
 use App\Filament\Resources\Attendances\AttendanceResource;

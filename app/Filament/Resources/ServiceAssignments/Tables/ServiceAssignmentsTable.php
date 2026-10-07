@@ -85,11 +85,10 @@ class ServiceAssignmentsTable
             ])
 
             ->recordUrl(
-                fn (ServiceAssignment $record): string =>
-                    route(
-                        'filament.admin.resources.service-assignments.view',
-                        ['record' => $record]
-                    )
+                fn (ServiceAssignment $record): string => route(
+                    'filament.admin.resources.service-assignments.view',
+                    ['record' => $record]
+                )
             )
 
             ->filters([

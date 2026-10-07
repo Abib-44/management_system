@@ -8,12 +8,12 @@ use Tests\TestCase;
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * La home reindirizza (al login o al pannello admin).
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_the_application_redirects_from_home(): void
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        $response->assertRedirect();
     }
 }
