@@ -348,7 +348,7 @@ class AdminPanelProvider extends PanelProvider
             ->navigation(
                 fn (NavigationBuilder $builder): NavigationBuilder => $builder
                     ->items([
-                        NavigationItem::make('Dashboard')
+                        NavigationItem::make('Infrastruttura')
                             ->icon('heroicon-o-home')
                             ->url(Dashboard::getUrl())
                             ->visible(

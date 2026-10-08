@@ -472,6 +472,13 @@
                 line-height: 17px;
             }
         }
+
+        @media (max-width: 640px) {
+        .storage-widget .storage-gauge {
+            
+    margin-bottom: 20px;
+        }
+}
     </style>
 
     <x-filament::section

@@ -13,11 +13,11 @@ class DocumentsDashboard extends Page
 
     protected static ?string $navigationLabel = 'Documenti';
 
-    protected static ?string $title = 'Dashboard documenti';
+    protected static ?string $title = ' documenti';
 
     public function getView(): string
     {
-        return 'filament.pages.documents-dashboard';
+        return 'filament.pages.documents-';
     }
 
     public function getTotalFiles(): int

@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Storage;
 
 Route::get('/', function () {
     return Auth::check()
-        ? redirect('/admin')
+        ? redirect('/system')
         : redirect('/login');
 });
 

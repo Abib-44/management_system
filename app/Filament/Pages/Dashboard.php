@@ -13,7 +13,9 @@ class Dashboard extends BaseDashboard
 {
     use HasPageShield;
 
-    protected static string $routePath = '/admin';
+    protected static string $routePath = '/system';
+
+    protected static ?string $title = 'Monitoraggio del sistema';
 
     public function getWidgets(): array
     {
