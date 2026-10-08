@@ -6,6 +6,7 @@ use App\Filament\Pages\Backup;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\DocumentsDashboard;
 use App\Filament\Pages\FinanceDashboard;
+use App\Filament\Pages\SchoolFinanceDashboard;
 use App\Filament\Pages\MembersDashboard;
 use App\Filament\Pages\ServicesDashboard;
 use App\Filament\Pages\TeachingAgenda;
@@ -38,11 +39,13 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Resources\Resource;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Saade\FilamentFullCalendar\FilamentFullCalendarPlugin;
 
@@ -91,6 +94,7 @@ class AdminPanelProvider extends PanelProvider
                     'label' => 'Materiali',
                     'icon' => 'heroicon-o-cube',
                 ],
+
                 TeachingAgenda::class => [
                     'label' => 'Agenda',
                     'icon' => 'heroicon-o-calendar',
@@ -124,6 +128,11 @@ class AdminPanelProvider extends PanelProvider
             'Finanze' => [
                 FinanceDashboard::class => [
                     'label' => 'Panoramica',
+                    'icon' => 'heroicon-o-chart-bar-square',
+                ],
+
+                SchoolFinanceDashboard::class => [
+                    'label' => 'Panoramica scuola',
                     'icon' => 'heroicon-o-chart-bar-square',
                 ],
 
@@ -229,16 +238,6 @@ class AdminPanelProvider extends PanelProvider
             return [];
         }
 
-        /*
-         * Filament Shield:
-         *
-         * Resource:
-         * ViewAny:NomeResource
-         *
-         * Page:
-         * View:NomePage
-         */
-
         if (is_subclass_of($class, Resource::class)) {
             $resource = class_basename($class);
 
@@ -248,7 +247,7 @@ class AdminPanelProvider extends PanelProvider
 
             $permission = "ViewAny:{$resource}";
         } else {
-            $permission = 'View:'.class_basename($class);
+            $permission = 'View:' . class_basename($class);
         }
 
         if (! $user->can($permission)) {
@@ -293,6 +292,15 @@ class AdminPanelProvider extends PanelProvider
                 FilamentFullCalendarPlugin::make(),
             ])
 
+->renderHook(
+    PanelsRenderHook::HEAD_END,
+    fn (): HtmlString => new HtmlString(
+        '<link rel="stylesheet" href="/css/login-mobile.css?v='
+        . filemtime(public_path('css/login-mobile.css'))
+        . '">'
+    ),
+)
+
             ->renderHook(
                 'panels::auth.login.form.before',
                 fn (): string => <<<'HTML'
@@ -312,32 +320,24 @@ class AdminPanelProvider extends PanelProvider
             )
 
             ->renderHook(
-                'panels::head.end',
-                fn (): string => <<<'HTML'
-                    <style>
+                PanelsRenderHook::HEAD_END,
+                fn (): HtmlString => new HtmlString(
+                    '<style>
                         .fi-simple-header-heading {
                             display: none !important;
                         }
-                    </style>
-                HTML
-            )
 
-            ->brandLogo(asset('images/logo.png'))
-            ->brandLogoHeight('11rem')
-
-            ->renderHook(
-                'panels::head.end',
-                fn (): string => <<<'HTML'
-                    <style>
-                        .fi-logo img,
                         .fi-sidebar-header img,
                         .fi-topbar img {
                             max-height: 2.5rem !important;
                             width: auto !important;
                         }
-                    </style>
-                HTML
+                    </style>'
+                ),
             )
+
+            ->brandLogo(asset('images/logo.png'))
+            ->brandLogoHeight('11rem')
 
             ->favicon(asset('images/logo.png'))
 

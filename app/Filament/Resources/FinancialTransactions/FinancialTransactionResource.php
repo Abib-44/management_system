@@ -16,6 +16,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class FinancialTransactionResource extends Resource
 {
@@ -34,6 +35,27 @@ class FinancialTransactionResource extends Resource
     public static function getMaxContentWidth(): Width
     {
         return Width::Full;
+    }
+
+    /**
+     * Un utente "solo scuola" (teacher senza altri ruoli finanziari)
+     * vede, apre e modifica solo i movimenti con scope = school.
+     * Vale per tabella, view, edit, azioni e ricerca globale.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        if (auth()->user()?->isSchoolOnly()) {
+            $query
+                ->where('scope', 'school')
+                ->whereHas(
+                    'category',
+                    fn (Builder $q) => $q->visibleTo(auth()->user())
+                );
+        }
+
+        return $query;
     }
 
     public static function form(Schema $schema): Schema

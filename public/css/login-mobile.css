@@ -1,0 +1,22 @@
+@media (max-width: 640px) {
+    .fi-simple-main-ctn {
+        align-items: flex-start;
+        padding: 1rem;
+    }
+
+    .fi-simple-main-ctn {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .fi-simple-main {
+            margin-block: calc(var(--spacing) * 0);
+        max-width: 100%;
+        padding: 2rem 1.25rem;
+        border-radius: var(--radius-xl);
+    }
+
+    .fi-simple-header-heading {
+        font-size: 1.625rem;
+    }
+}

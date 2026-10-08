@@ -89,6 +89,7 @@ class RolePermissionSeeder extends Seeder
                 'Material',
                 'SchoolYear',
                 'TeachingDashboard',
+                'FinancialTransaction',
             ],
             'view' => [
                 'Activity',
@@ -108,6 +109,7 @@ class RolePermissionSeeder extends Seeder
         'admin' => [
             'View:Dashboard',
             'View:FinanceDashboard',
+            'View:SchoolFinanceDashboard',
             'View:TeachingDashboard',
             'View:MembersDashboard',
             'View:ServicesDashboard',
@@ -123,6 +125,7 @@ class RolePermissionSeeder extends Seeder
         'treasurer' => [
             'View:Dashboard',
             'View:FinanceDashboard',
+            'View:SchoolFinanceDashboard',
             'View:DocumentsDashboard',
         ],
 
@@ -130,6 +133,7 @@ class RolePermissionSeeder extends Seeder
             'View:Dashboard',
             'View:TeachingDashboard',
             'View:TeachingAgenda',
+            'View:SchoolFinanceDashboard',
         ],
 
         'services' => [
@@ -156,6 +160,17 @@ class RolePermissionSeeder extends Seeder
                 'name' => $permission,
                 'guard_name' => 'web',
             ]);
+        }
+
+        // Permessi pagina non rilevati automaticamente da Shield:
+        // li creiamo comunque, così syncPagePermissions() li trova.
+        foreach (self::PAGE_PERMISSIONS as $pagePermissions) {
+            foreach ($pagePermissions as $permission) {
+                Permission::firstOrCreate([
+                    'name' => $permission,
+                    'guard_name' => 'web',
+                ]);
+            }
         }
     }
 

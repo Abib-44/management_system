@@ -33,18 +33,20 @@ class User extends Authenticatable implements FilamentUser
     use HasRoles;
     use Notifiable;
 
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'phone',
-        'active',
-    ];
-
     public function canAccessPanel(Panel $panel): bool
     {
         // Accede chi è attivo e ha almeno un ruolo (admin, teacher, ecc.).
         return (bool) $this->active && $this->roles()->exists();
+    }
+
+    /**
+     * Utente limitato all'ambito scuola: ha il ruolo teacher
+     * e nessun ruolo che gli dia accesso alle finanze generali.
+     */
+    public function isSchoolOnly(): bool
+    {
+        return $this->hasRole('teacher')
+            && ! $this->hasAnyRole(['super_admin', 'admin', 'treasurer']);
     }
 
     protected function casts(): array

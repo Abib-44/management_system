@@ -18,12 +18,14 @@ use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class FinancialTransactionForm
 {
-    private const PAYMENT_METHODS = [
+    public const PAYMENT_METHODS = [
         'cash' => 'Contanti',
         'bank_transfer' => 'Bonifico bancario',
         'card' => 'Carta',
@@ -32,12 +34,21 @@ class FinancialTransactionForm
         'pos' => 'POS',
     ];
 
-    private const SCOPES = [
+    public const SCOPES = [
         'general' => 'Generale',
         'treasury' => 'Tesoreria',
         'school' => 'Scuola',
         'association' => 'Associazione',
     ];
+
+    /**
+     * True per un utente teacher senza altri ruoli finanziari:
+     * può lavorare solo sull'ambito "school".
+     */
+    private static function isSchoolOnly(): bool
+    {
+        return auth()->user()?->isSchoolOnly() ?? false;
+    }
 
     public static function configure(Schema $schema): Schema
     {
@@ -64,16 +75,16 @@ class FinancialTransactionForm
                                     ->columns(2)
                                     ->schema([
 
-                                       Select::make('type')
-    ->label('Tipo movimento')
-    ->options([
-        'income' => 'Entrata',
-        'expense' => 'Uscita',
-    ])
-    ->required()
-    ->native(false)
-    ->live()
-    ->placeholder('Seleziona il tipo'),
+                                        Select::make('type')
+                                            ->label('Tipo movimento')
+                                            ->options([
+                                                'income' => 'Entrata',
+                                                'expense' => 'Uscita',
+                                            ])
+                                            ->required()
+                                            ->native(false)
+                                            ->live()
+                                            ->placeholder('Seleziona il tipo'),
 
                                         TextInput::make('amount')
                                             ->label('Importo')
@@ -94,7 +105,21 @@ class FinancialTransactionForm
 
                                         Select::make('category_id')
                                             ->label('Categoria')
-                                            ->relationship('category', 'name')
+                                            ->relationship(
+                                                'category',
+                                                'name',
+                                                fn (Builder $query) => $query->visibleTo(auth()->user())
+                                            )
+                                            ->rules([
+                                                // Blocca anche un category_id manomesso:
+                                                // il teacher non può salvare categorie non scolastiche
+                                                fn () => Rule::exists('financial_categories', 'id')
+                                                    ->where(
+                                                        fn ($q) => self::isSchoolOnly()
+                                                            ? $q->where('area', FinancialCategory::SCHOOL_AREA)
+                                                            : $q
+                                                    ),
+                                            ])
                                             ->searchable()
                                             ->preload()
                                             ->required()
@@ -137,7 +162,10 @@ class FinancialTransactionForm
                                             ])
                                             ->createOptionUsing(function (array $data) {
                                                 return FinancialCategory::create($data)->getKey();
-                                            }),
+                                            })
+                                            ->createOptionAction(
+                                                fn ($action) => $action->visible(! self::isSchoolOnly())
+                                            ),
 
                                         Textarea::make('description')
                                             ->label('Descrizione')
@@ -178,7 +206,14 @@ class FinancialTransactionForm
 
                                         Select::make('scope')
                                             ->label('Ambito')
-                                            ->options(self::SCOPES)
+                                            ->options(fn (): array => self::isSchoolOnly()
+                                                ? ['school' => self::SCOPES['school']]
+                                                : self::SCOPES)
+                                            ->default(fn (): ?string => self::isSchoolOnly() ? 'school' : null)
+                                            ->disabled(fn (): bool => self::isSchoolOnly())
+                                            // Un campo disabilitato non viene salvato di default:
+                                            // dehydrated() forza il salvataggio del valore.
+                                            ->dehydrated()
                                             ->getOptionLabelUsing(fn (?string $value): ?string => self::SCOPES[$value] ?? $value)
                                             ->searchable()
                                             ->native(false)
@@ -191,7 +226,12 @@ class FinancialTransactionForm
                                                     ->maxLength(255),
                                             ])
                                             ->createOptionUsing(fn (array $data): string => $data['value'])
-                                            ->helperText('Puoi scegliere un ambito predefinito oppure aggiungere un nuovo ambito.'),
+                                            ->createOptionAction(
+                                                fn ($action) => $action->visible(! self::isSchoolOnly())
+                                            )
+                                            ->helperText(fn (): string => self::isSchoolOnly()
+                                                ? 'Come insegnante puoi registrare solo movimenti per la scuola.'
+                                                : 'Puoi scegliere un ambito predefinito oppure aggiungere un nuovo ambito.'),
 
                                         TextInput::make('receipt_number')
                                             ->label('Numero ricevuta')
@@ -426,6 +466,8 @@ class FinancialTransactionForm
                                                     ->native(false)
                                                     ->placeholder('Collega eventualmente un documento')
                                                     ->nullable()
+                                                    // Il teacher non ha permessi su DocumentArchive
+                                                    ->visible(fn (): bool => ! self::isSchoolOnly())
                                                     ->createOptionForm([
 
                                                         TextInput::make('title')

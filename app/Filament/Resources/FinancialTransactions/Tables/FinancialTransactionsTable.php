@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\FinancialTransactions\Tables;
 
 use App\Filament\Resources\FinancialTransactions\FinancialTransactionResource;
+use App\Filament\Resources\FinancialTransactions\Schemas\FinancialTransactionForm;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -96,22 +97,13 @@ class FinancialTransactionsTable
                     ->label('Metodo di pagamento')
                     ->badge()
                     ->formatStateUsing(
-                        fn (string $state): string => match ($state) {
-                            'cash' => 'Contanti',
-                            'bank_transfer' => 'Bonifico bancario',
-                            'card' => 'Carta',
-                            'check' => 'Assegno',
-                            'other' => 'Altro',
-                            default => $state,
-                        }
+                        fn (?string $state): ?string => FinancialTransactionForm::PAYMENT_METHODS[$state] ?? $state
                     )
                     ->color(
-                        fn (string $state): string => match ($state) {
+                        fn (?string $state): string => match ($state) {
                             'cash' => 'success',
                             'bank_transfer' => 'info',
-                            'card' => 'warning',
-                            'check' => 'gray',
-                            'other' => 'gray',
+                            'card', 'pos' => 'warning',
                             default => 'gray',
                         }
                     ),
@@ -120,17 +112,12 @@ class FinancialTransactionsTable
                     ->label('Ambito')
                     ->badge()
                     ->toggleable(isToggledHiddenByDefault: true)
+                    ->visible(fn (): bool => ! auth()->user()->isSchoolOnly())
                     ->formatStateUsing(
-                        fn (string $state): string => match ($state) {
-                            'general' => 'Generale',
-                            'school' => 'Scuola',
-                            'association' => 'Associazione',
-                            default => $state,
-                        }
+                        fn (?string $state): ?string => FinancialTransactionForm::SCOPES[$state] ?? $state
                     )
                     ->color(
-                        fn (string $state): string => match ($state) {
-                            'general' => 'gray',
+                        fn (?string $state): string => match ($state) {
                             'school' => 'info',
                             'association' => 'warning',
                             default => 'gray',
@@ -223,27 +210,22 @@ class FinancialTransactionsTable
 
                 SelectFilter::make('scope')
                     ->label('Ambito')
-                    ->options([
-                        'general' => 'Generale',
-                        'school' => 'Scuola',
-                        'association' => 'Associazione',
-                    ]),
+                    ->options(FinancialTransactionForm::SCOPES)
+                    ->visible(fn (): bool => ! auth()->user()->isSchoolOnly()),
 
                 SelectFilter::make('category_id')
                     ->label('Categoria')
-                    ->relationship('category', 'name')
+                    ->relationship(
+                        'category',
+                        'name',
+                        fn (Builder $query) => $query->visibleTo(auth()->user())
+                    )
                     ->searchable()
                     ->preload(),
 
                 SelectFilter::make('payment_method')
                     ->label('Metodo di pagamento')
-                    ->options([
-                        'cash' => 'Contanti',
-                        'bank_transfer' => 'Bonifico bancario',
-                        'card' => 'Carta',
-                        'check' => 'Assegno',
-                        'other' => 'Altro',
-                    ]),
+                    ->options(FinancialTransactionForm::PAYMENT_METHODS),
             ])
 
             ->recordActions([
