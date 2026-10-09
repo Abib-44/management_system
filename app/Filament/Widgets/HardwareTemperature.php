@@ -3,258 +3,169 @@
 namespace App\Filament\Widgets;
 
 use Filament\Widgets\Widget;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Process;
+use Livewire\Attributes\Computed;
 
 class HardwareTemperature extends Widget
 {
+    private const HWMON_ROOT = '/sys/class/hwmon';
+
+    private const CACHE_KEY = 'widgets.hardware-temperature';
+
+    private const CACHE_TTL_SECONDS = 5;
+
+    private const COLOR_EXCELLENT = '#2dd4bf';
+
+    private const COLOR_GOOD = '#4ade80';
+
+    private const COLOR_WARNING = '#f59e0b';
+
+    private const COLOR_CRITICAL = '#f43f5e';
+
+    private const COLOR_NEUTRAL = '#9ca3af';
+
     protected string $view = 'filament.widgets.hardware-temperature';
 
     protected int|string|array $columnSpan = 1;
 
     protected static ?int $sort = 2;
 
-    protected function getRawSensors(): array
+    #[Computed]
+    public function sensors(): array
     {
-        $fanRpm = $this->readFanRpm();
+        $readings = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, fn () => $this->readings());
 
+        return collect($this->definitions())
+            ->map(fn (array $definition, string $key) => $this->present($definition, $readings[$key] ?? null))
+            ->all();
+    }
+
+    private function definitions(): array
+    {
         return [
             'cpu' => [
                 'label' => 'CPU',
                 'sub' => 'Processore',
                 'icon' => 'heroicon-o-cpu-chip',
-                'value' => $this->readCpuTemp(),
-                'max' => 90,
                 'unit' => '°C',
+                'thresholds' => [50, 70, 85],
             ],
             'motherboard' => [
                 'label' => 'Scheda madre',
-                'sub' => 'Sensore PCH',
+                'sub' => 'Chipset',
                 'icon' => 'heroicon-o-server-stack',
-                'value' => $this->readMotherboardTemp(),
-                'max' => 80,
                 'unit' => '°C',
+                'thresholds' => [45, 60, 75],
             ],
             'gpu' => [
                 'label' => 'GPU',
                 'sub' => 'Scheda video',
                 'icon' => 'heroicon-o-computer-desktop',
-                'value' => $this->readGpuTemp(),
-                'max' => 90,
                 'unit' => '°C',
+                'thresholds' => [55, 75, 88],
             ],
             'nvme' => [
                 'label' => 'NVMe',
                 'sub' => 'Archiviazione',
                 'icon' => 'heroicon-o-circle-stack',
-                'value' => $this->readNvmeTemp(),
-                'max' => 70,
                 'unit' => '°C',
+                'thresholds' => [45, 60, 70],
             ],
             'fan' => [
                 'label' => 'Ventola',
                 'sub' => 'Raffreddamento',
                 'icon' => 'heroicon-o-arrow-path',
-                'value' => $fanRpm,
-                'max' => 2000,
                 'unit' => 'RPM',
-                'inactive' => $fanRpm === 0,
+                'thresholds' => null,
             ],
         ];
     }
 
-    public function getSensors(): array
+    private function readings(): array
     {
-        $sensors = [];
+        $chips = $this->chips();
 
-        foreach ($this->getRawSensors() as $key => $sensor) {
-            $value = $sensor['value'];
-            $percentage = $value !== null
-                ? (int) min(100, round(($value / $sensor['max']) * 100))
-                : 0;
-
-            [$statusLabel, $statusColor] = $this->statusFor(
-                $percentage,
-                (bool) ($sensor['inactive'] ?? false),
-                $value === null,
-            );
-
-            $sensors[$key] = array_merge($sensor, [
-                'pct' => $percentage,
-                'status_label' => $statusLabel,
-                'status_color' => $statusColor,
-            ]);
-        }
-
-        return $sensors;
+        return [
+            'cpu' => $this->highest($chips, '/^(coretemp|k10temp)$/', 'temperatures'),
+            'motherboard' => $this->highest($chips, '/^(pch_|nct|it87|w83)/', 'temperatures'),
+            'gpu' => $this->highest($chips, '/^(amdgpu|nouveau)$/', 'temperatures') ?? $this->nvidiaTemperature(),
+            'nvme' => $this->highest($chips, '/^nvme$/', 'temperatures'),
+            'fan' => $this->highest($chips, '/./', 'fans'),
+        ];
     }
 
-    public function getOverallLoad(): ?int
+    private function chips(): array
     {
-        $percentages = [];
-
-        foreach ($this->getRawSensors() as $key => $sensor) {
-            if ($key === 'fan' || $sensor['value'] === null) {
-                continue;
-            }
-
-            $percentages[] = min(100, ($sensor['value'] / $sensor['max']) * 100);
-        }
-
-        return $percentages === []
-            ? null
-            : (int) round(array_sum($percentages) / count($percentages));
+        return collect(glob(self::HWMON_ROOT.'/hwmon*') ?: [])
+            ->map(fn (string $path) => [
+                'name' => $this->readFile($path.'/name'),
+                'temperatures' => $this->readInputs($path.'/temp*_input', 1000),
+                'fans' => $this->readInputs($path.'/fan*_input', 1),
+            ])
+            ->all();
     }
 
-    protected function statusFor(int $percentage, bool $inactive, bool $unavailable): array
+    private function readInputs(string $pattern, int $divisor): array
     {
-        if ($unavailable) {
-            return ['N/D', '#9ca3af'];
-        }
-
-        if ($inactive) {
-            return ['Spenta', '#9ca3af'];
-        }
-
-        if ($percentage < 35) {
-            return ['Ottima', '#2dd4bf'];
-        }
-
-        if ($percentage < 60) {
-            return ['Buona', '#4ade80'];
-        }
-
-        if ($percentage < 82) {
-            return ['Attenzione', '#f59e0b'];
-        }
-
-        return ['Critica', '#f43f5e'];
+        return collect(glob($pattern) ?: [])
+            ->map(fn (string $file) => $this->readFile($file))
+            ->filter(fn (?string $raw) => is_numeric($raw))
+            ->map(fn (string $raw) => $raw / $divisor)
+            ->values()
+            ->all();
     }
 
-    protected function readCpuTemp(): ?float
+    private function readFile(string $path): ?string
     {
-        $data = $this->readSensorsJson();
+        $content = @file_get_contents($path);
 
-        foreach ($data as $chip) {
-            foreach ($chip as $sensorName => $sensorData) {
-                if (! is_array($sensorData)) {
-                    continue;
-                }
-
-                if (! preg_match('/package|tdie|tctl/i', $sensorName)) {
-                    continue;
-                }
-
-                foreach ($sensorData as $field => $value) {
-                    if (preg_match('/^temp\d+_input$/', $field) && is_numeric($value)) {
-                        return (float) $value;
-                    }
-                }
-            }
-        }
-
-        return null;
+        return $content === false ? null : trim($content);
     }
 
-    protected function readMotherboardTemp(): ?float
+    private function highest(array $chips, string $namePattern, string $kind): ?float
     {
-        $data = $this->readSensorsJson();
+        $values = collect($chips)
+            ->filter(fn (array $chip) => $chip['name'] !== null && preg_match($namePattern, $chip['name']))
+            ->flatMap(fn (array $chip) => $chip[$kind])
+            ->all();
 
-        foreach ($data as $chipName => $chip) {
-            if (! preg_match('/pch|nct|it87|w83|f71|lm(78|87|85)/i', $chipName)) {
-                continue;
-            }
-
-            foreach ($chip as $sensorName => $sensorData) {
-                if (! is_array($sensorData) || ! preg_match('/temp\d+/', $sensorName)) {
-                    continue;
-                }
-
-                foreach ($sensorData as $field => $value) {
-                    if (preg_match('/^temp\d+_input$/', $field) && is_numeric($value)) {
-                        return (float) $value;
-                    }
-                }
-            }
-        }
-
-        return null;
+        return $values === [] ? null : (float) max($values);
     }
 
-    protected function readGpuTemp(): ?float
+    private function nvidiaTemperature(): ?float
     {
-        $output = $this->runCommand(['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader,nounits']);
+        $result = Process::timeout(2)->run([
+            'nvidia-smi',
+            '--query-gpu=temperature.gpu',
+            '--format=csv,noheader,nounits',
+        ]);
 
-        if ($output === null || ! is_numeric(trim($output))) {
-            return null;
-        }
+        $firstLine = trim(explode("\n", trim($result->output()))[0]);
 
-        return (float) trim($output);
+        return $result->successful() && is_numeric($firstLine) ? (float) $firstLine : null;
     }
 
-    protected function readNvmeTemp(): ?float
+    private function present(array $definition, ?float $value): array
     {
-        foreach (['/dev/nvme0', '/dev/nvme0n1'] as $device) {
-            $output = $this->runCommand(['smartctl', '-A', $device]);
+        [$label, $color] = $this->status($definition['thresholds'], $value);
 
-            if ($output !== null && preg_match('/Temperature:\s*(\d+(?:\.\d+)?)\s*(?:Celsius|°C)/i', $output, $matches)) {
-                return (float) $matches[1];
-            }
-
-            if ($output !== null && preg_match('/Temperature:\s*(\d+(?:\.\d+)?)/i', $output, $matches)) {
-                return (float) $matches[1];
-            }
-        }
-
-        return null;
+        return $definition + [
+            'display' => $value === null ? 'N/D' : (string) round($value, $definition['unit'] === 'RPM' ? 0 : 1),
+            'status_label' => $label,
+            'status_color' => $color,
+        ];
     }
 
-    protected function readFanRpm(): ?int
+    private function status(?array $thresholds, ?float $value): array
     {
-        foreach ($this->readSensorsJson() as $chip) {
-            foreach ($chip as $sensorData) {
-                if (! is_array($sensorData)) {
-                    continue;
-                }
-
-                foreach ($sensorData as $field => $value) {
-                    if (preg_match('/^fan\d+_input$/', $field) && is_numeric($value)) {
-                        return (int) $value;
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    protected function readSensorsJson(): array
-    {
-        $output = $this->runCommand(['sensors', '-j']);
-
-        if ($output === null) {
-            return [];
-        }
-
-        $decoded = json_decode($output, true);
-
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    protected function runCommand(array $command): ?string
-    {
-        if (! function_exists('exec')) {
-            return null;
-        }
-
-        $escapedCommand = implode(' ', array_map('escapeshellarg', $command));
-        $output = [];
-        $exitCode = 0;
-
-        exec($escapedCommand . ' 2>/dev/null', $output, $exitCode);
-
-        if ($exitCode !== 0) {
-            return null;
-        }
-
-        return implode("\n", $output);
+        return match (true) {
+            $value === null => ['N/D', self::COLOR_NEUTRAL],
+            $thresholds === null => $value > 0 ? ['Attiva', self::COLOR_GOOD] : ['Spenta', self::COLOR_NEUTRAL],
+            $value < $thresholds[0] => ['Ottima', self::COLOR_EXCELLENT],
+            $value < $thresholds[1] => ['Buona', self::COLOR_GOOD],
+            $value < $thresholds[2] => ['Attenzione', self::COLOR_WARNING],
+            default => ['Critica', self::COLOR_CRITICAL],
+        };
     }
 }
