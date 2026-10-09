@@ -68,52 +68,34 @@ class RoleResource extends Resource
 
     protected static ?int $navigationSort = 100;
 
-    /*
-    |--------------------------------------------------------------------------
-    | FORM
-    |--------------------------------------------------------------------------
-    */
-
     public static function form(Schema $schema): Schema
     {
-        return $schema
-            ->components([
-                Section::make('Informazioni')
-                    ->schema([
-                        TextInput::make('name')
-                            ->label('Nome')
-                            ->required()
-                            ->maxLength(255)
-                            ->unique(
-                                ignoreRecord: true,
-                                modifyRuleUsing: fn (Unique $rule): Unique => $rule
-                                    ->where('guard_name', 'web'),
-                            ),
+        return $schema->components([
+            Section::make('Informazioni')
+                ->schema([
+                    TextInput::make('name')
+                        ->label('Nome')
+                        ->required()
+                        ->maxLength(255)
+                        ->unique(
+                            ignoreRecord: true,
+                            modifyRuleUsing: fn (Unique $rule): Unique => $rule->where('guard_name', 'web'),
+                        ),
 
-                        Select::make('guard_name')
-                            ->label('Guard')
-                            ->options([
-                                'web' => 'web',
-                            ])
-                            ->default('web')
-                            ->required()
-                            ->disabled(),
-                    ])
-                    ->columnSpanFull(),
+                    Select::make('guard_name')
+                        ->label('Guard')
+                        ->options(['web' => 'web'])
+                        ->default('web')
+                        ->required()
+                        ->disabled(),
+                ])
+                ->columnSpanFull(),
 
-                Section::make('Permessi')
-                    ->schema(
-                        static::getResourceEntitiesSchema() ?? [],
-                    )
-                    ->columnSpanFull(),
-            ]);
+            Section::make('Permessi')
+                ->schema(static::getResourceEntitiesSchema())
+                ->columnSpanFull(),
+        ]);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GROUPS
-    |--------------------------------------------------------------------------
-    */
 
     protected static function shieldGroupMap(): array
     {
@@ -140,6 +122,28 @@ class RoleResource extends Resource
             UserResource::class => 'Sistema',
             self::class => 'Sistema',
             AuditLogResource::class => 'Sistema',
+        ];
+    }
+
+    protected static function shieldStandaloneMap(): array
+    {
+        return [
+            'View:TeachingDashboard' => ['Didattica', 'Panoramica didattica'],
+            'View:TeachingAgenda' => ['Didattica', 'Agenda'],
+
+            'View:MembersDashboard' => ['Soci', 'Panoramica soci'],
+
+            'View:FinanceDashboard' => ['Amministrazione', 'Panoramica finanze'],
+            'View:SchoolFinanceDashboard' => ['Amministrazione', 'Panoramica finanze scuola'],
+
+            'View:ServicesDashboard' => ['Servizi', 'Panoramica servizi'],
+
+            'View:DocumentsDashboard' => ['Documenti', 'Panoramica documenti'],
+            'View:DocumentArchiveStatistics' => ['Documenti', 'Statistiche archivio (widget)'],
+
+            'View:Dashboard' => ['Sistema', 'Infrastruttura'],
+            'View:Backup' => ['Sistema', 'Backup'],
+            'View:ServiceStatus' => ['Sistema', 'Stato servizi (widget)'],
         ];
     }
 
@@ -171,77 +175,37 @@ class RoleResource extends Resource
                 : $group->name;
         }
 
-        return filled($group)
-            ? (string) $group
-            : 'Altro';
+        return filled($group) ? (string) $group : 'Altro';
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | RESOURCE PERMISSIONS
-    |--------------------------------------------------------------------------
-    */
-
-    public static function getResourceEntitiesSchema(): ?array
+    public static function getResourceEntitiesSchema(): array
     {
-        $groups = collect(FilamentShield::getResources())
-            ->groupBy(
-                fn (array $entity): string => static::resolveShieldGroup(
-                    $entity['resourceFqcn'],
-                ),
-            );
+        $resourceGroups = collect(FilamentShield::getResources())
+            ->groupBy(fn (array $entity): string => static::resolveShieldGroup($entity['resourceFqcn']));
+
+        $allGroups = $resourceGroups->keys()
+            ->merge(collect(static::shieldStandaloneMap())->map(fn (array $entry): string => $entry[0]))
+            ->unique();
 
         $orderedGroups = collect(static::shieldGroupOrder());
 
-        $remainingGroups = $groups->keys()
-            ->diff($orderedGroups)
-            ->sort()
-            ->values();
+        return $orderedGroups
+            ->merge($allGroups->diff($orderedGroups)->sort()->values())
+            ->filter(fn (string $group): bool => $allGroups->contains($group))
+            ->map(function (string $group) use ($resourceGroups): Section {
+                $sections = collect($resourceGroups->get($group, []))
+                    ->map(fn (array $entity): Section => static::getResourceSection($entity))
+                    ->values()
+                    ->all();
 
-        $groupOrder = $orderedGroups
-            ->merge($remainingGroups);
+                $standalone = static::getStandaloneSection($group);
 
-        return $groupOrder
-            ->filter(
-                fn (string $groupName): bool => $groups->has($groupName),
-            )
-            ->map(function (string $groupName) use ($groups): Section {
-                $entities = $groups->get($groupName);
+                if ($standalone) {
+                    $sections[] = $standalone;
+                }
 
-                return Section::make(mb_strtoupper($groupName))
-                    ->schema(
-                        $entities
-                            ->map(function (array $entity): Section {
-                                $sectionLabel = strval(
-                                    static::shield()->hasLocalizedPermissionLabels()
-                                        ? FilamentShield::getLocalizedResourceLabel(
-                                            $entity['resourceFqcn'],
-                                        )
-                                        : $entity['model'],
-                                );
-
-                                return Section::make($sectionLabel)
-                                    ->description(
-                                        fn (): HtmlString => new HtmlString(
-                                            '<span style="word-break: break-word;">'
-                                            .Utils::showModelPath(
-                                                $entity['modelFqcn'],
-                                            )
-                                            .'</span>',
-                                        ),
-                                    )
-                                    ->compact()
-                                    ->schema([
-                                        static::getCheckBoxListComponentForResource(
-                                            $entity,
-                                        ),
-                                    ])
-                                    ->collapsible()
-                                    ->collapsed();
-                            })
-                            ->values()
-                            ->all(),
-                    )
+                return Section::make(mb_strtoupper($group))
+                    ->schema($sections)
                     ->columnSpanFull()
                     ->collapsible()
                     ->collapsed();
@@ -250,156 +214,105 @@ class RoleResource extends Resource
             ->all();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | CHECKBOX LIST
-    |--------------------------------------------------------------------------
-    */
+    protected static function getResourceSection(array $entity): Section
+    {
+        $label = strval(
+            static::shield()->hasLocalizedPermissionLabels()
+                ? FilamentShield::getLocalizedResourceLabel($entity['resourceFqcn'])
+                : $entity['model'],
+        );
 
-    protected static function getCheckBoxListComponentForResource(
-        array $entity,
-    ): CheckboxList {
-        $resourceClass = $entity['resourceFqcn'];
-
-        $resourceName = class_basename($resourceClass);
-
-        $statePath = 'permissions_'.Str::snake($resourceName);
-
-        return CheckboxList::make($statePath)
-            ->label('')
-
-            ->options(
-                static::getResourcePermissionOptions($entity),
+        return Section::make($label)
+            ->description(
+                fn (): HtmlString => new HtmlString(
+                    '<span style="word-break: break-word;">'.Utils::showModelPath($entity['modelFqcn']).'</span>',
+                ),
             )
+            ->compact()
+            ->schema([static::getResourceCheckboxList($entity)])
+            ->collapsible()
+            ->collapsed();
+    }
 
-            /*
-             * IMPORTANTISSIMO:
-             *
-             * Quando si apre la pagina Edit del ruolo,
-             * prendiamo le permission già presenti sul ruolo
-             * e selezioniamo automaticamente le checkbox.
-             */
-            ->afterStateHydrated(
-                function (
-                    CheckboxList $component,
-                    mixed $state,
-                ) use ($entity): void {
-                    $record = $component
-                        ->getContainer()
-                        ->getLivewire()
-                        ->getRecord();
+    protected static function getStandaloneSection(string $group): ?Section
+    {
+        $options = collect(static::shieldStandaloneMap())
+            ->filter(fn (array $entry): bool => $entry[0] === $group)
+            ->map(fn (array $entry): string => $entry[1])
+            ->all();
 
-                    if (! $record) {
-                        return;
-                    }
+        if ($options === []) {
+            return null;
+        }
 
-                    $permissions = $record->permissions
-                        ->pluck('name')
-                        ->toArray();
-
-                    $resourcePermissions = collect(
-                        $entity['permissions'] ?? []
-                    )
-                        ->map(function (mixed $permission): ?string {
-                            if (is_string($permission)) {
-                                return $permission;
-                            }
-
-                            if (is_array($permission)) {
-                                return $permission['name']
-                                    ?? $permission['permission']
-                                    ?? $permission['key']
-                                    ?? null;
-                            }
-
-                            return null;
-                        })
-                        ->filter()
-                        ->values()
-                        ->all();
-
-                    /*
-                     * Manteniamo solo le permission
-                     * appartenenti a questa Resource.
-                     */
-                    $selected = array_values(
-                        array_intersect(
-                            $permissions,
-                            $resourcePermissions,
+        return Section::make('
+Panoramica')
+            ->compact()
+            ->schema([
+                CheckboxList::make('permissions_standalone_'.Str::snake($group))
+                    ->label('')
+                    ->options($options)
+                    ->afterStateHydrated(
+                        fn (CheckboxList $component) => $component->state(
+                            static::assignedPermissions($component, array_keys($options)),
                         ),
-                    );
-
-                    $component->state($selected);
-                },
-            )
-
-            ->columns([
-                'sm' => 1,
-                'md' => 2,
-                'lg' => 3,
-                'xl' => 4,
+                    )
+                    ->columns(['sm' => 1, 'md' => 2, 'lg' => 3])
+                    ->gridDirection('row')
+                    ->bulkToggleable(),
             ])
+            ->collapsible()
+            ->collapsed();
+    }
 
+    protected static function getResourceCheckboxList(array $entity): CheckboxList
+    {
+        $names = static::permissionNames($entity);
+
+        return CheckboxList::make('permissions_'.Str::snake(class_basename($entity['resourceFqcn'])))
+            ->label('')
+            ->options(static::getResourcePermissionOptions($entity))
+            ->afterStateHydrated(
+                fn (CheckboxList $component) => $component->state(
+                    static::assignedPermissions($component, $names),
+                ),
+            )
+            ->columns(['sm' => 1, 'md' => 2, 'lg' => 3, 'xl' => 4])
             ->gridDirection('row')
-
             ->bulkToggleable();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | PERMISSION OPTIONS
-    |--------------------------------------------------------------------------
-    */
+    protected static function assignedPermissions(CheckboxList $component, array $allowed): array
+    {
+        $record = $component->getContainer()->getLivewire()->getRecord();
+
+        if (! $record) {
+            return [];
+        }
+
+        return array_values(
+            array_intersect($record->permissions->pluck('name')->all(), $allowed),
+        );
+    }
+
+    protected static function permissionNames(array $entity): array
+    {
+        return collect($entity['permissions'] ?? [])
+            ->map(fn (mixed $permission): ?string => is_array($permission)
+                ? ($permission['name'] ?? $permission['permission'] ?? $permission['key'] ?? null)
+                : (is_string($permission) ? $permission : null))
+            ->filter(fn (?string $name): bool => filled($name))
+            ->values()
+            ->all();
+    }
 
     public static function getResourcePermissionOptions(array $entity): array
     {
-        return collect($entity['permissions'] ?? [])
-            ->mapWithKeys(function (mixed $permission): array {
-                /*
-                 * Shield può restituire:
-                 *
-                 * "ViewAny:Student"
-                 *
-                 * oppure un array contenente il nome.
-                 */
-
-                if (is_string($permission)) {
-                    $name = $permission;
-                } elseif (is_array($permission)) {
-                    $name = $permission['name']
-                        ?? $permission['permission']
-                        ?? $permission['key']
-                        ?? null;
-                } else {
-                    $name = null;
-                }
-
-                if (! is_string($name) || $name === '') {
-                    return [];
-                }
-
-                /*
-                 * Esempio:
-                 *
-                 * ViewAny:Student
-                 *
-                 * diventa:
-                 *
-                 * view_any
-                 */
-
-                [$action] = explode(':', $name, 2);
-
-                $key = Str::snake($action);
-
-                $translationKey =
-                    "filament-shield::filament-shield.resource_permission_prefixes_labels.{$key}";
-
+        return collect(static::permissionNames($entity))
+            ->mapWithKeys(function (string $name): array {
+                $key = Str::snake(Str::before($name, ':'));
+                $translationKey = "filament-shield::filament-shield.resource_permission_prefixes_labels.{$key}";
                 $label = __($translationKey);
-
-                /*
-                 * Fallback italiano.
-                 */
 
                 if ($label === $translationKey) {
                     $label = match ($key) {
@@ -419,18 +332,10 @@ class RoleResource extends Resource
                     };
                 }
 
-                return [
-                    $name => $label,
-                ];
+                return [$name => $label];
             })
             ->all();
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | TABLE
-    |--------------------------------------------------------------------------
-    */
 
     public static function table(Table $table): Table
     {
@@ -465,12 +370,6 @@ class RoleResource extends Resource
             ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | PAGES
-    |--------------------------------------------------------------------------
-    */
-
     public static function getPages(): array
     {
         return [
@@ -480,12 +379,6 @@ class RoleResource extends Resource
             'edit' => EditRole::route('/{record}/edit'),
         ];
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | LABELS
-    |--------------------------------------------------------------------------
-    */
 
     public static function getNavigationLabel(): string
     {
