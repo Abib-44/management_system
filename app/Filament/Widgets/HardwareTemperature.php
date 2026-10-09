@@ -12,13 +12,10 @@ class HardwareTemperature extends Widget
 
     protected static ?int $sort = 2;
 
-    /**
-     * Dati grezzi per ogni sensore: valore reale, max di riferimento, unità.
-     * Il "max" è la soglia che consideri critica per quel componente,
-     * non un limite fisico assoluto: adattala al tuo hardware.
-     */
     protected function getRawSensors(): array
     {
+        $fanRpm = $this->readFanRpm();
+
         return [
             'cpu' => [
                 'label' => 'CPU',
@@ -30,7 +27,7 @@ class HardwareTemperature extends Widget
             ],
             'motherboard' => [
                 'label' => 'Scheda madre',
-                'sub' => 'Motherboard',
+                'sub' => 'Sensore PCH',
                 'icon' => 'heroicon-o-server-stack',
                 'value' => $this->readMotherboardTemp(),
                 'max' => 80,
@@ -56,30 +53,32 @@ class HardwareTemperature extends Widget
                 'label' => 'Ventola',
                 'sub' => 'Raffreddamento',
                 'icon' => 'heroicon-o-arrow-path',
-                'value' => $this->readFanRpm(),
+                'value' => $fanRpm,
                 'max' => 2000,
                 'unit' => 'RPM',
-                'inactive' => $this->readFanRpm() === 0,
+                'inactive' => $fanRpm === 0,
             ],
         ];
     }
 
-    /**
-     * Punto d'ingresso per la view: aggiunge pct, status e colore già calcolati.
-     */
     public function getSensors(): array
     {
         $sensors = [];
 
-        foreach ($this->getRawSensors() as $key => $s) {
-            $pct = $s['value'] !== null
-                ? (int) min(100, round(($s['value'] / $s['max']) * 100))
+        foreach ($this->getRawSensors() as $key => $sensor) {
+            $value = $sensor['value'];
+            $percentage = $value !== null
+                ? (int) min(100, round(($value / $sensor['max']) * 100))
                 : 0;
 
-            [$statusLabel, $statusColor] = $this->statusFor($pct, ! empty($s['inactive']), $s['value'] === null);
+            [$statusLabel, $statusColor] = $this->statusFor(
+                $percentage,
+                (bool) ($sensor['inactive'] ?? false),
+                $value === null,
+            );
 
-            $sensors[$key] = array_merge($s, [
-                'pct' => $pct,
+            $sensors[$key] = array_merge($sensor, [
+                'pct' => $percentage,
                 'status_label' => $statusLabel,
                 'status_color' => $statusColor,
             ]);
@@ -88,70 +87,65 @@ class HardwareTemperature extends Widget
         return $sensors;
     }
 
-    /**
-     * Media ponderata: percentuale rispetto alla soglia critica di ogni sensore,
-     * non media aritmetica dei gradi (che mischierebbe scale diverse).
-     * La ventola (RPM) è esclusa perché non è una temperatura.
-     */
     public function getOverallLoad(): ?int
     {
         $percentages = [];
 
-        foreach ($this->getRawSensors() as $key => $s) {
-            if ($key === 'fan' || $s['value'] === null) {
+        foreach ($this->getRawSensors() as $key => $sensor) {
+            if ($key === 'fan' || $sensor['value'] === null) {
                 continue;
             }
 
-            $percentages[] = min(100, ($s['value'] / $s['max']) * 100);
+            $percentages[] = min(100, ($sensor['value'] / $sensor['max']) * 100);
         }
 
-        if (empty($percentages)) {
-            return null;
-        }
-
-        return (int) round(array_sum($percentages) / count($percentages));
+        return $percentages === []
+            ? null
+            : (int) round(array_sum($percentages) / count($percentages));
     }
 
-    protected function statusFor(int $pct, bool $inactive, bool $unavailable): array
+    protected function statusFor(int $percentage, bool $inactive, bool $unavailable): array
     {
         if ($unavailable) {
             return ['N/D', '#9ca3af'];
         }
+
         if ($inactive) {
             return ['Spenta', '#9ca3af'];
         }
-        if ($pct < 35) {
+
+        if ($percentage < 35) {
             return ['Ottima', '#2dd4bf'];
         }
-        if ($pct < 60) {
+
+        if ($percentage < 60) {
             return ['Buona', '#4ade80'];
         }
-        if ($pct < 82) {
+
+        if ($percentage < 82) {
             return ['Attenzione', '#f59e0b'];
         }
 
         return ['Critica', '#f43f5e'];
     }
 
-    /**
-     * Legge la temperatura CPU da `sensors -j` (pacchetto lm-sensors).
-     * Cerca il primo chip che contiene "Package" o "Tdie"/"Tctl" (Intel/AMD).
-     * Adatta le chiavi ai nomi che vedi tu con `sensors -j` da terminale.
-     */
     protected function readCpuTemp(): ?float
     {
         $data = $this->readSensorsJson();
 
         foreach ($data as $chip) {
-            foreach ($chip as $key => $value) {
-                if (! is_array($value)) {
+            foreach ($chip as $sensorName => $sensorData) {
+                if (! is_array($sensorData)) {
                     continue;
                 }
-                if (str_contains($key, 'Package') || str_contains($key, 'Tdie') || str_contains($key, 'Tctl')) {
-                    foreach ($value as $subKey => $subValue) {
-                        if (str_starts_with($subKey, 'temp') && str_ends_with($subKey, '_input')) {
-                            return (float) $subValue;
-                        }
+
+                if (! preg_match('/package|tdie|tctl/i', $sensorName)) {
+                    continue;
+                }
+
+                foreach ($sensorData as $field => $value) {
+                    if (preg_match('/^temp\d+_input$/', $field) && is_numeric($value)) {
+                        return (float) $value;
                     }
                 }
             }
@@ -164,84 +158,103 @@ class HardwareTemperature extends Widget
     {
         $data = $this->readSensorsJson();
 
-        // Nomi tipici dei chip Super I/O sulla scheda madre: nct6775, it87, w83627ehf...
         foreach ($data as $chipName => $chip) {
-            if (preg_match('/nct|it87|w83|f71|lm(78|87|85)/i', $chipName)) {
-                foreach ($chip as $key => $value) {
-                    if (! is_array($value) || ! str_contains($key, 'temp1')) {
-                        continue;
-                    }
-                    foreach ($value as $subKey => $subValue) {
-                        if (str_ends_with($subKey, '_input')) {
-                            return (float) $subValue;
-                        }
-                    }
-                }
+            if (! preg_match('/pch|nct|it87|w83|f71|lm(78|87|85)/i', $chipName)) {
+                continue;
             }
-        }
 
-        return null;
-    }
-
-    /**
-     * GPU NVIDIA via nvidia-smi. Per AMD/Intel integrata la fonte cambia
-     * (es. amdgpu appare già dentro `sensors -j`).
-     */
-    protected function readGpuTemp(): ?float
-    {
-        $output = @shell_exec('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null');
-
-        if ($output !== null && trim($output) !== '') {
-            return (float) trim($output);
-        }
-
-        return null;
-    }
-
-    /**
-     * Temperatura NVMe via smartctl (richiede smartmontools installato).
-     */
-    protected function readNvmeTemp(): ?float
-    {
-        $output = @shell_exec('smartctl -A /dev/nvme0 2>/dev/null | grep -i temperature');
-
-        if ($output && preg_match('/(\d+)\s*Celsius/', $output, $matches)) {
-            return (float) $matches[1];
-        }
-
-        return null;
-    }
-
-    protected function readFanRpm(): int
-    {
-        $data = $this->readSensorsJson();
-
-        foreach ($data as $chip) {
-            foreach ($chip as $key => $value) {
-                if (! is_array($value) || ! str_starts_with($key, 'fan')) {
+            foreach ($chip as $sensorName => $sensorData) {
+                if (! is_array($sensorData) || ! preg_match('/temp\d+/', $sensorName)) {
                     continue;
                 }
-                foreach ($value as $subKey => $subValue) {
-                    if (str_ends_with($subKey, '_input')) {
-                        return (int) $subValue;
+
+                foreach ($sensorData as $field => $value) {
+                    if (preg_match('/^temp\d+_input$/', $field) && is_numeric($value)) {
+                        return (float) $value;
                     }
                 }
             }
         }
 
-        return 0;
+        return null;
+    }
+
+    protected function readGpuTemp(): ?float
+    {
+        $output = $this->runCommand(['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader,nounits']);
+
+        if ($output === null || ! is_numeric(trim($output))) {
+            return null;
+        }
+
+        return (float) trim($output);
+    }
+
+    protected function readNvmeTemp(): ?float
+    {
+        foreach (['/dev/nvme0', '/dev/nvme0n1'] as $device) {
+            $output = $this->runCommand(['smartctl', '-A', $device]);
+
+            if ($output !== null && preg_match('/Temperature:\s*(\d+(?:\.\d+)?)\s*(?:Celsius|°C)/i', $output, $matches)) {
+                return (float) $matches[1];
+            }
+
+            if ($output !== null && preg_match('/Temperature:\s*(\d+(?:\.\d+)?)/i', $output, $matches)) {
+                return (float) $matches[1];
+            }
+        }
+
+        return null;
+    }
+
+    protected function readFanRpm(): ?int
+    {
+        foreach ($this->readSensorsJson() as $chip) {
+            foreach ($chip as $sensorData) {
+                if (! is_array($sensorData)) {
+                    continue;
+                }
+
+                foreach ($sensorData as $field => $value) {
+                    if (preg_match('/^fan\d+_input$/', $field) && is_numeric($value)) {
+                        return (int) $value;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     protected function readSensorsJson(): array
     {
-        $output = @shell_exec('sensors -j 2>/dev/null');
+        $output = $this->runCommand(['sensors', '-j']);
 
-        if (! $output) {
+        if ($output === null) {
             return [];
         }
 
         $decoded = json_decode($output, true);
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    protected function runCommand(array $command): ?string
+    {
+        if (! function_exists('exec')) {
+            return null;
+        }
+
+        $escapedCommand = implode(' ', array_map('escapeshellarg', $command));
+        $output = [];
+        $exitCode = 0;
+
+        exec($escapedCommand . ' 2>/dev/null', $output, $exitCode);
+
+        if ($exitCode !== 0) {
+            return null;
+        }
+
+        return implode("\n", $output);
     }
 }
