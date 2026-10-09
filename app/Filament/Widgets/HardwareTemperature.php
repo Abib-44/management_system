@@ -3,8 +3,8 @@
 namespace App\Filament\Widgets;
 
 use Filament\Widgets\Widget;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Computed;
 
 class HardwareTemperature extends Widget
@@ -37,7 +37,7 @@ class HardwareTemperature extends Widget
         $readings = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, fn () => $this->readings());
 
         return collect($this->definitions())
-            ->map(fn (array $definition, string $key) => $this->present($definition, $readings[$key] ?? null))
+            ->map(fn (array $definition, string $key) => $this->present($definition, $readings[$key]))
             ->all();
     }
 
@@ -49,20 +49,26 @@ class HardwareTemperature extends Widget
                 'sub' => 'Processore',
                 'icon' => 'heroicon-o-cpu-chip',
                 'unit' => '°C',
-                'thresholds' => [50, 70, 85],
+                'chip' => '/^(coretemp|k10temp)$/',
+                'kind' => 'temp',
+                'thresholds' => [55, 70, 85],
             ],
             'motherboard' => [
                 'label' => 'Scheda madre',
                 'sub' => 'Chipset',
                 'icon' => 'heroicon-o-server-stack',
                 'unit' => '°C',
-                'thresholds' => [45, 60, 75],
+                'chip' => '/^(pch_|thinkpad|nct|it87|w83|acpitz)/',
+                'kind' => 'temp',
+                'thresholds' => [50, 65, 80],
             ],
             'gpu' => [
                 'label' => 'GPU',
                 'sub' => 'Scheda video',
                 'icon' => 'heroicon-o-computer-desktop',
                 'unit' => '°C',
+                'chip' => '/^(amdgpu|nouveau|radeon)$/',
+                'kind' => 'temp',
                 'thresholds' => [55, 75, 88],
             ],
             'nvme' => [
@@ -70,6 +76,8 @@ class HardwareTemperature extends Widget
                 'sub' => 'Archiviazione',
                 'icon' => 'heroicon-o-circle-stack',
                 'unit' => '°C',
+                'chip' => '/^(nvme|drivetemp)$/',
+                'kind' => 'temp',
                 'thresholds' => [45, 60, 70],
             ],
             'fan' => [
@@ -77,6 +85,8 @@ class HardwareTemperature extends Widget
                 'sub' => 'Raffreddamento',
                 'icon' => 'heroicon-o-arrow-path',
                 'unit' => 'RPM',
+                'chip' => '/./',
+                'kind' => 'fan',
                 'thresholds' => null,
             ],
         ];
@@ -86,34 +96,28 @@ class HardwareTemperature extends Widget
     {
         $chips = $this->chips();
 
-        return [
-            'cpu' => $this->highest($chips, '/^(coretemp|k10temp)$/', 'temperatures'),
-            'motherboard' => $this->highest($chips, '/^(pch_|nct|it87|w83)/', 'temperatures'),
-            'gpu' => $this->highest($chips, '/^(amdgpu|nouveau)$/', 'temperatures') ?? $this->nvidiaTemperature(),
-            'nvme' => $this->highest($chips, '/^nvme$/', 'temperatures'),
-            'fan' => $this->highest($chips, '/./', 'fans'),
-        ];
-    }
-
-    private function chips(): array
-    {
-        return collect(glob(self::HWMON_ROOT.'/hwmon*') ?: [])
-            ->map(fn (string $path) => [
-                'name' => $this->readFile($path.'/name'),
-                'temperatures' => $this->readInputs($path.'/temp*_input', 1000),
-                'fans' => $this->readInputs($path.'/fan*_input', 1),
-            ])
+        return collect($this->definitions())
+            ->map(fn (array $definition) => $this->highest($chips, $definition['chip'], $definition['kind']))
             ->all();
     }
 
-    private function readInputs(string $pattern, int $divisor): array
+    private function chips(): Collection
+    {
+        return collect(glob(self::HWMON_ROOT.'/hwmon*') ?: [])
+            ->map(fn (string $path) => [
+                'name' => $this->readFile($path.'/name') ?? basename($path),
+                'temp' => $this->readInputs($path.'/temp*_input', 1000)->filter(fn (float $value) => $value > 0),
+                'fan' => $this->readInputs($path.'/fan*_input', 1),
+            ]);
+    }
+
+    private function readInputs(string $pattern, int $divisor): Collection
     {
         return collect(glob($pattern) ?: [])
             ->map(fn (string $file) => $this->readFile($file))
             ->filter(fn (?string $raw) => is_numeric($raw))
             ->map(fn (string $raw) => $raw / $divisor)
-            ->values()
-            ->all();
+            ->values();
     }
 
     private function readFile(string $path): ?string
@@ -123,27 +127,13 @@ class HardwareTemperature extends Widget
         return $content === false ? null : trim($content);
     }
 
-    private function highest(array $chips, string $namePattern, string $kind): ?float
+    private function highest(Collection $chips, string $namePattern, string $kind): ?float
     {
-        $values = collect($chips)
-            ->filter(fn (array $chip) => $chip['name'] !== null && preg_match($namePattern, $chip['name']))
-            ->flatMap(fn (array $chip) => $chip[$kind])
-            ->all();
+        $values = $chips
+            ->filter(fn (array $chip) => preg_match($namePattern, $chip['name']))
+            ->flatMap(fn (array $chip) => $chip[$kind]);
 
-        return $values === [] ? null : (float) max($values);
-    }
-
-    private function nvidiaTemperature(): ?float
-    {
-        $result = Process::timeout(2)->run([
-            'nvidia-smi',
-            '--query-gpu=temperature.gpu',
-            '--format=csv,noheader,nounits',
-        ]);
-
-        $firstLine = trim(explode("\n", trim($result->output()))[0]);
-
-        return $result->successful() && is_numeric($firstLine) ? (float) $firstLine : null;
+        return $values->isEmpty() ? null : (float) $values->max();
     }
 
     private function present(array $definition, ?float $value): array
