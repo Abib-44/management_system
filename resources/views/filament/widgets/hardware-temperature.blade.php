@@ -6,6 +6,8 @@
     >
         <div class="temperature-widget" wire:poll.10s>
             @foreach ($this->sensors as $sensor)
+                @continue($sensor['display'] === 'N/D')
+
                 <div class="temperature-item">
                     <div class="temperature-icon" style="color: {{ $sensor['status_color'] }}; background: color-mix(in srgb, {{ $sensor['status_color'] }} 12%, transparent)">
                         <x-filament::icon :icon="$sensor['icon']" />
