@@ -43,21 +43,6 @@ class HardwareTemperature extends Widget
 
     private function definitions(): array
     {
-        $voltages = [];
-        foreach (range(0, 3) as $i) {
-            $voltages['voltage_'.$i] = [
-                'label' => 'Tensione '.($i + 1),
-                'sub' => 'Alimentazione (in'.$i.')',
-                'icon' => 'heroicon-o-bolt',
-                'unit' => 'V',
-                'chip' => '/^ftsteutates$/',
-                'kind' => 'in',
-                'index' => $i,
-                'thresholds' => null,
-                'range' => [2.7, 3.6],
-            ];
-        }
-
         return [
             'cpu' => [
                 'label' => 'CPU',
@@ -113,7 +98,7 @@ class HardwareTemperature extends Widget
                 'kind' => 'fan',
                 'thresholds' => null,
             ],
-        ] + $voltages;
+        ];
     }
 
     private function readings(): array
@@ -121,12 +106,7 @@ class HardwareTemperature extends Widget
         $chips = $this->chips();
 
         return collect($this->definitions())
-            ->map(fn (array $definition) => $this->highest(
-                $chips,
-                $definition['chip'],
-                $definition['kind'],
-                $definition['index'] ?? null,
-            ))
+            ->map(fn (array $definition) => $this->highest($chips, $definition['chip'], $definition['kind']))
             ->all();
     }
 
@@ -137,7 +117,6 @@ class HardwareTemperature extends Widget
                 'name' => $this->readFile($path.'/name') ?? basename($path),
                 'temp' => $this->readInputs($path.'/temp*_input', 1000)->filter(fn (float $value) => $value > 0),
                 'fan' => $this->readInputs($path.'/fan*_input', 1),
-                'in' => $this->readInputs($path.'/in*_input', 1000),
             ]);
     }
 
@@ -157,49 +136,30 @@ class HardwareTemperature extends Widget
         return $content === false ? null : trim($content);
     }
 
-    private function highest(Collection $chips, string $namePattern, string $kind, ?int $index = null): ?float
+    private function highest(Collection $chips, string $namePattern, string $kind): ?float
     {
         $values = $chips
             ->filter(fn (array $chip) => preg_match($namePattern, $chip['name']))
-            ->flatMap(fn (array $chip) => $chip[$kind])
-            ->values();
-
-        if ($index !== null) {
-            $value = $values->get($index);
-
-            return $value === null ? null : (float) $value;
-        }
+            ->flatMap(fn (array $chip) => $chip[$kind]);
 
         return $values->isEmpty() ? null : (float) $values->max();
     }
 
     private function present(array $definition, ?float $value): array
     {
-        [$label, $color] = $this->status($definition, $value);
-
-        $decimals = match ($definition['unit']) {
-            'RPM' => 0,
-            'V' => 2,
-            default => 1,
-        };
+        [$label, $color] = $this->status($definition['thresholds'], $value);
 
         return $definition + [
-            'display' => $value === null ? 'N/D' : (string) round($value, $decimals),
+            'display' => $value === null ? 'N/D' : (string) round($value, $definition['unit'] === 'RPM' ? 0 : 1),
             'status_label' => $label,
             'status_color' => $color,
         ];
     }
 
-    private function status(array $definition, ?float $value): array
+    private function status(?array $thresholds, ?float $value): array
     {
-        $thresholds = $definition['thresholds'];
-        $range = $definition['range'] ?? null;
-
         return match (true) {
             $value === null => ['N/D', self::COLOR_NEUTRAL],
-            $range !== null => ($value >= $range[0] && $value <= $range[1])
-                ? ['Stabile', self::COLOR_GOOD]
-                : ['Fuori range', self::COLOR_CRITICAL],
             $thresholds === null => $value > 0 ? ['Attiva', self::COLOR_GOOD] : ['Spenta', self::COLOR_NEUTRAL],
             $value < $thresholds[0] => ['Ottima', self::COLOR_EXCELLENT],
             $value < $thresholds[1] => ['Buona', self::COLOR_GOOD],
