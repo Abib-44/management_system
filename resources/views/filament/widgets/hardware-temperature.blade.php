@@ -4,8 +4,8 @@
         description="Monitoraggio hardware"
         icon="heroicon-o-cpu-chip"
     >
-        <div class="temperature-widget">
-            @foreach ($this->getSensors() as $sensor)
+        <div class="temperature-widget" wire:poll.10s>
+            @foreach ($this->sensors as $sensor)
                 <div class="temperature-item">
                     <div class="temperature-icon" style="color: {{ $sensor['status_color'] }}; background: color-mix(in srgb, {{ $sensor['status_color'] }} 12%, transparent)">
                         <x-filament::icon :icon="$sensor['icon']" />
@@ -18,10 +18,9 @@
 
                     <div class="temperature-value">
                         <div class="temperature-number">
-                            @if ($sensor['value'] !== null)
-                                {{ rtrim(rtrim(number_format((float) $sensor['value'], 1, '.', ''), '0'), '.') }}<span class="temperature-unit"> {{ $sensor['unit'] }}</span>
-                            @else
-                                N/D
+                            {{ $sensor['display'] }}
+                            @if ($sensor['display'] !== 'N/D')
+                                <span class="temperature-unit">{{ $sensor['unit'] }}</span>
                             @endif
                         </div>
                         <div class="temperature-status" style="color: {{ $sensor['status_color'] }}">
