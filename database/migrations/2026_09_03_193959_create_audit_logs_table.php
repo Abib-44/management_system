@@ -15,7 +15,19 @@ return new class extends Migration
             $table->string('action');
             $table->text('detail')->nullable();
             $table->string('ip_address', 45)->nullable();
+
+            // Dettagli del record modificato
+            $table->string('auditable_type')->nullable();
+            $table->string('auditable_id')->nullable();
+            $table->json('old_values')->nullable();
+            $table->json('new_values')->nullable();
+            $table->text('user_agent')->nullable();
+
             $table->timestamps();
+
+            $table->index(['auditable_type', 'auditable_id']);
+            $table->index('action');
+            $table->index('occurred_at');
         });
     }
 

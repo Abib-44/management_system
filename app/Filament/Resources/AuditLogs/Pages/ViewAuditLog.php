@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\AuditLogs\Pages;
 
 use App\Filament\Resources\AuditLogs\AuditLogResource;
-use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewAuditLog extends ViewRecord
@@ -12,8 +11,16 @@ class ViewAuditLog extends ViewRecord
 
     protected function getHeaderActions(): array
     {
-        return [
-            EditAction::make(),
-        ];
+        return [];
+    }
+
+    public function getTitle(): string
+    {
+        return 'Dettaglio attività';
+    }
+
+    public function getSubheading(): ?string
+    {
+        return 'Consultazione dei dettagli e delle informazioni tecniche dell’evento.';
     }
 }

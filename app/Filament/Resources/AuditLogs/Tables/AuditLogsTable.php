@@ -2,21 +2,26 @@
 
 namespace App\Filament\Resources\AuditLogs\Tables;
 
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use Carbon\Carbon;
+use Filament\Actions\ViewAction;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class AuditLogsTable
 {
     public static function configure(Table $table): Table
     {
         return $table
+            ->defaultSort('id', 'desc')
             ->columns([
                 TextColumn::make('user.name')
                     ->label('Utente')
+                    ->placeholder('Sistema')
                     ->searchable()
                     ->sortable(),
 
@@ -27,6 +32,14 @@ class AuditLogsTable
 
                 TextColumn::make('action')
                     ->label('Azione')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'created' => 'success',
+                        'updated' => 'warning',
+                        'deleted' => 'danger',
+                        'login' => 'info',
+                        default => 'gray',
+                    })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'created' => 'Creato',
                         'updated' => 'Modificato',
@@ -36,6 +49,7 @@ class AuditLogsTable
                         default => ucfirst($state),
                     })
                     ->searchable(),
+
 
                 TextColumn::make('ip_address')
                     ->label('Indirizzo IP')
@@ -54,25 +68,80 @@ class AuditLogsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                SelectFilter::make('action')
+                    ->label('Azione')
+                    ->options([
+                        'created' => 'Creato',
+                        'updated' => 'Modificato',
+                        'deleted' => 'Eliminato',
+                        'login' => 'Accesso',
+                        'logout' => 'Disconnessione',
+                    ])
+                    ->multiple(),
+
+                SelectFilter::make('user_id')
+                    ->label('Utente')
+                    ->relationship('user', 'name')
+                    ->searchable()
+                    ->preload(),
+
+                Filter::make('occurred_at')
+                    ->label('Periodo')
+                    ->form([
+                        DatePicker::make('from')
+                            ->label('Dal')
+                            ->native(false)
+                            ->displayFormat('d/m/Y'),
+                        DatePicker::make('until')
+                            ->label('Al')
+                            ->native(false)
+                            ->displayFormat('d/m/Y'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('occurred_at', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('occurred_at', '<=', $date),
+                            );
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+
+                        if ($data['from'] ?? null) {
+                            $indicators[] = 'Dal '.Carbon::parse($data['from'])->format('d/m/Y');
+                        }
+
+                        if ($data['until'] ?? null) {
+                            $indicators[] = 'Al '.Carbon::parse($data['until'])->format('d/m/Y');
+                        }
+
+                        return $indicators;
+                    }),
+
+                Filter::make('ip_address')
+                    ->label('Indirizzo IP')
+                    ->form([
+                        TextInput::make('ip_address')
+                            ->label('Indirizzo IP'),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        $data['ip_address'] ?? null,
+                        fn (Builder $query, $ip): Builder => $query->where('ip_address', 'like', "%{$ip}%"),
+                    ))
+                    ->indicateUsing(fn (array $data): ?string => ($data['ip_address'] ?? null)
+                        ? 'IP: '.$data['ip_address']
+                        : null),
             ])
             ->recordActions([
-                EditAction::make()
+                ViewAction::make()
                     ->label(false)
-                    ->icon('heroicon-o-pencil')
-                    ->tooltip('Modifica'),
-
-                DeleteAction::make()
-                    ->label(false)
-                    ->icon('heroicon-o-trash')
-                    ->color('danger')
-                    ->tooltip('Elimina'),
+                    ->icon('heroicon-o-eye')
+                    ->tooltip('Dettaglio'),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make()
-                        ->label('Elimina selezionati'),
-                ]),
-            ]);
+            ->toolbarActions([]);
     }
 }

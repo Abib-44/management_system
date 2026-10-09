@@ -26,9 +26,12 @@ return [
                 'exclude' => [
                     base_path('vendor'),
                     base_path('node_modules'),
+                    base_path('.git'),
+                    base_path('.env.production'),
                     storage_path('framework'),
                     storage_path('app/backup-temp'),
                     storage_path('app/Backup'),
+                    storage_path('app/private'),
                 ],
 
                 'follow_links' => false,

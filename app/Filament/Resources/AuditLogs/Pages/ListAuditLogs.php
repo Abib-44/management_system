@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\AuditLogs\Pages;
 
 use App\Filament\Resources\AuditLogs\AuditLogResource;
-use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListAuditLogs extends ListRecords
@@ -12,8 +11,19 @@ class ListAuditLogs extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [
-            CreateAction::make(),
-        ];
+        return [];
+    }
+
+    /**
+     * Alterna solo asc e desc, senza il terzo stato "reset"
+     * che causava il click a vuoto.
+     */
+    public function sortTable(?string $column = null, ?string $direction = null): void
+    {
+        if ($direction === null && $column !== null && $column === $this->getTableSortColumn()) {
+            $direction = $this->getTableSortDirection() === 'asc' ? 'desc' : 'asc';
+        }
+
+        parent::sortTable($column, $direction);
     }
 }

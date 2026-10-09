@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\AuditLogs;
 
-use App\Filament\Resources\AuditLogs\Pages\CreateAuditLog;
-use App\Filament\Resources\AuditLogs\Pages\EditAuditLog;
 use App\Filament\Resources\AuditLogs\Pages\ListAuditLogs;
 use App\Filament\Resources\AuditLogs\Pages\ViewAuditLog;
 use App\Filament\Resources\AuditLogs\Schemas\AuditLogForm;
@@ -22,7 +20,33 @@ class AuditLogResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static ?string $recordTitleAttribute = 'AuditLog';
+    protected static ?string $recordTitleAttribute = 'action';
+
+    protected static ?string $navigationLabel = 'Registro attività';
+
+    protected static ?string $modelLabel = 'Attività';
+
+    protected static ?string $pluralModelLabel = 'Registro attività';
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -50,9 +74,7 @@ class AuditLogResource extends Resource
     {
         return [
             'index' => ListAuditLogs::route('/'),
-            'create' => CreateAuditLog::route('/create'),
             'view' => ViewAuditLog::route('/{record}'),
-            'edit' => EditAuditLog::route('/{record}/edit'),
         ];
     }
 }

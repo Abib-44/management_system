@@ -317,16 +317,16 @@ class AdminPanelProvider extends PanelProvider
                     </div>
                 HTML
             )
-->renderHook(
-    PanelsRenderHook::SIDEBAR_LOGO_AFTER,
-    fn (): HtmlString => new HtmlString(
-        '<span class="sidebar-brand-text">
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_LOGO_AFTER,
+                fn (): HtmlString => new HtmlString(
+                    '<span class="sidebar-brand-text">
             <span class="brand-subtitle">ASSOCIAZIONE</span>
             <span class="brand-title">FRATELLANZA</span>
             <span class="brand-subtitle">E UGUAGLIANZA</span>
         </span>'
-    ),
-)
+                ),
+            )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): HtmlString => new HtmlString(
