@@ -6,8 +6,8 @@ use App\Filament\Pages\Backup;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\DocumentsDashboard;
 use App\Filament\Pages\FinanceDashboard;
-use App\Filament\Pages\SchoolFinanceDashboard;
 use App\Filament\Pages\MembersDashboard;
+use App\Filament\Pages\SchoolFinanceDashboard;
 use App\Filament\Pages\ServicesDashboard;
 use App\Filament\Pages\TeachingAgenda;
 use App\Filament\Pages\TeachingDashboard;
@@ -247,7 +247,7 @@ class AdminPanelProvider extends PanelProvider
 
             $permission = "ViewAny:{$resource}";
         } else {
-            $permission = 'View:' . class_basename($class);
+            $permission = 'View:'.class_basename($class);
         }
 
         if (! $user->can($permission)) {
@@ -291,15 +291,14 @@ class AdminPanelProvider extends PanelProvider
 
                 FilamentFullCalendarPlugin::make(),
             ])
-
-->renderHook(
-    PanelsRenderHook::HEAD_END,
-    fn (): HtmlString => new HtmlString(
-        '<link rel="stylesheet" href="/css/login-mobile.css?v='
-        . filemtime(public_path('css/login-mobile.css'))
-        . '">'
-    ),
-)
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): HtmlString => new HtmlString(
+                    '<link rel="stylesheet" href="/css/login-mobile.css?v='
+                    .filemtime(public_path('css/login-mobile.css'))
+                    .'">'
+                ),
+            )
 
             ->renderHook(
                 'panels::auth.login.form.before',
@@ -318,7 +317,16 @@ class AdminPanelProvider extends PanelProvider
                     </div>
                 HTML
             )
-
+->renderHook(
+    PanelsRenderHook::SIDEBAR_LOGO_AFTER,
+    fn (): HtmlString => new HtmlString(
+        '<span class="sidebar-brand-text">
+            <span class="brand-subtitle">ASSOCIAZIONE</span>
+            <span class="brand-title">FRATELLANZA</span>
+            <span class="brand-subtitle">E UGUAGLIANZA</span>
+        </span>'
+    ),
+)
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): HtmlString => new HtmlString(
@@ -329,7 +337,7 @@ class AdminPanelProvider extends PanelProvider
 
                         .fi-sidebar-header img,
                         .fi-topbar img {
-                            max-height: 2.5rem !important;
+                            max-height: 2.5rem;
                             width: auto !important;
                         }
                     </style>'

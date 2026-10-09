@@ -225,7 +225,7 @@ class SchoolFinanceDashboard extends Page
             $date = $start->copy()->addDays($i);
             $dateKey = $date->format('Y-m-d');
 
-            $labels[] = $days[$date->dayOfWeek] . ' ' . $date->format('d');
+            $labels[] = $days[$date->dayOfWeek].' '.$date->format('d');
 
             $dayTransactions = $transactions->filter(
                 fn ($transaction) => Carbon::parse($transaction->transaction_date)->format('Y-m-d') === $dateKey
@@ -330,7 +330,7 @@ class SchoolFinanceDashboard extends Page
         $this->unpaidUsers = $students
             ->map(fn (Student $s) => [
                 'id' => $s->id,
-                'name' => $s->last_name . ' ' . $s->first_name,
+                'name' => $s->last_name.' '.$s->first_name,
                 'email' => $s->email ?: 'Nessuna email',
                 'remaining' => (float) $s->total_fee - (float) ($s->paid ?? 0),
             ])

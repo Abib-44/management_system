@@ -4,11 +4,36 @@
         padding: 1rem;
     }
 
+    .fi-sidebar-nav {
+        padding-top: 0;
+    }
     .fi-simple-main-ctn {
         display: flex;
         justify-content: center;
+        
         align-items: center;
     }
+
+    .fi-sidebar-header-ctn {
+        display: flex;
+    }
+
+    .sidebar-brand-text {
+
+    margin-left: 10px;
+    }
+    .fi-sidebar-header .fi-logo {
+    margin-inline-start: calc(var(--spacing) * 0);
+}
+    .fi-sidebar-header {
+        height: 91px;
+    }
+
+    .fi-sidebar-header img{
+        max-height: 4rem !important;
+        width: auto !important;
+    }
+
     .fi-simple-main {
             margin-block: calc(var(--spacing) * 0);
         max-width: 100%;
@@ -19,4 +44,43 @@
     .fi-simple-header-heading {
         font-size: 1.625rem;
     }
+
+    .sidebar-brand-text {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .fi-sidebar-header .sidebar-brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+        padding-left: 0.65rem;
+        border-left: 2px solid #d4af37;
+        color: #ffffff;
+        line-height: 1.3;
+        white-space: nowrap;
+    }
+
+    .sidebar-brand-text .brand-subtitle {
+        font-size: 0.65rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+    }
+
+    .sidebar-brand-text .brand-title {
+        color: #f5d76e;
+        font-size: 0.85rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+    }
+html,
+body {
+    min-height: 100%;
+}
+
+.fi-layout {
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+}
 }
