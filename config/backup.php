@@ -12,10 +12,21 @@ use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumAgeInDays;
 use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumStorageInMegabytes;
 use Spatie\DbDumper\Compressors\GzipCompressor;
 
+/*
+|--------------------------------------------------------------------------
+| Nome cartella dei backup
+|--------------------------------------------------------------------------
+| Fisso e uguale in locale e in produzione. Prima dipendeva da APP_NAME,
+| per questo in prod i file finivano in "Gestionale/" mentre il widget
+| li cercava in "backups/". Deve coincidere con il prefisso usato da
+| App\Filament\Widgets\BackupStatus e dalla rotta backup.download.
+*/
+$backupFolder = 'backups';
+
 return [
 
     'backup' => [
-        'name' => env('APP_NAME', 'laravel-backup'),
+        'name' => $backupFolder,
 
         'source' => [
             'files' => [
@@ -27,10 +38,13 @@ return [
                     base_path('vendor'),
                     base_path('node_modules'),
                     base_path('.git'),
+                    // Segreti: non devono finire dentro lo ZIP
+                    base_path('.env'),
                     base_path('.env.production'),
                     storage_path('framework'),
                     storage_path('app/backup-temp'),
                     storage_path('app/Backup'),
+                    // Contiene i backup stessi: evita che si includano a catena
                     storage_path('app/private'),
                 ],
 
@@ -68,6 +82,7 @@ return [
 
         'temporary_directory' => storage_path('app/backup-temp'),
 
+        // Se vuota, lo ZIP non viene cifrato: va impostata anche in produzione
         'password' => env('BACKUP_ARCHIVE_PASSWORD'),
 
         'encryption' => 'default',
@@ -79,20 +94,28 @@ return [
         'retry_delay' => 0,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Notifiche
+    |--------------------------------------------------------------------------
+    | Solo gli errori inviano la mail. Le notifiche di successo sono spente:
+    | con la mail non configurata in prod potevano far fallire il comando.
+    | Per riattivarle, sostituisci [] con ['mail'].
+    */
     'notifications' => [
         'notifications' => [
             BackupHasFailedNotification::class => ['mail'],
             UnhealthyBackupWasFoundNotification::class => ['mail'],
             CleanupHasFailedNotification::class => ['mail'],
-            BackupWasSuccessfulNotification::class => ['mail'],
-            HealthyBackupWasFoundNotification::class => ['mail'],
-            CleanupWasSuccessfulNotification::class => ['mail'],
+            BackupWasSuccessfulNotification::class => [],
+            HealthyBackupWasFoundNotification::class => [],
+            CleanupWasSuccessfulNotification::class => [],
         ],
 
         'notifiable' => Notifiable::class,
 
         'mail' => [
-            'to' => env('BACKUP_NOTIFICATION_EMAIL', 'tuo@email.com'),
+            'to' => env('BACKUP_NOTIFICATION_EMAIL', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
 
             'from' => [
                 'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
@@ -122,7 +145,7 @@ return [
 
     'monitor_backups' => [
         [
-            'name' => env('APP_NAME', 'laravel-backup'),
+            'name' => $backupFolder,
             'disks' => ['local'],
             'health_checks' => [
                 MaximumAgeInDays::class => 1,
